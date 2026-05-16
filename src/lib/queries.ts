@@ -22,17 +22,37 @@ function todayISO() {
   return new Date().toISOString().slice(0, 10);
 }
 
+/**
+ * jq fragmenty pre rozpoznanie typu transakcie.
+ *
+ * Robustný prístup: preferuje _doc_type ak je nastavený, inak FALLBACK
+ * z natívnych polí kind + functional_type (mapovanie z accounting docs section 7).
+ * Účel: aj keď Claude tool call zabudne _doc_type, faktúru rozoznáme.
+ */
+const TX_MATCH = {
+  invoice_issued: `(._doc_type == "invoice_issued" or (._doc_type == null and .kind == "predaj" and .functional_type == "faktúra"))`,
+  invoice_received: `(._doc_type == "invoice_received" or (._doc_type == null and .kind == "nákup" and .functional_type == "faktúra"))`,
+  bank_line: `(._doc_type == "bank_line" or (._doc_type == null and (.kind == "platba" or .kind == "prevod" or .kind == "inkaso")))`,
+  payment: `(._doc_type == "payment")`,
+};
+
 export const filters = {
-  byDocType: (docType: AccountingDocType) =>
-    `.[] | select(._doc_type == "${docType}")`,
+  byDocType: (docType: AccountingDocType) => {
+    // Pre transakcie použij robustný matcher s fallbackom
+    if (docType in TX_MATCH) {
+      return `.[] | select(${TX_MATCH[docType as keyof typeof TX_MATCH]})`;
+    }
+    // Pre organization / file / account doc_typeу = strict (nie je z čoho odvodzovať)
+    return `.[] | select(._doc_type == "${docType}")`;
+  },
   invoiceIssuedMTD: () =>
-    `.[] | select(._doc_type == "invoice_issued" and .date >= "${startOfMonth()}" and .date <= "${endOfMonth()}")`,
+    `.[] | select(${TX_MATCH.invoice_issued} and .date >= "${startOfMonth()}" and .date <= "${endOfMonth()}")`,
   invoiceReceivedMTD: () =>
-    `.[] | select(._doc_type == "invoice_received" and .date >= "${startOfMonth()}" and .date <= "${endOfMonth()}")`,
+    `.[] | select(${TX_MATCH.invoice_received} and .date >= "${startOfMonth()}" and .date <= "${endOfMonth()}")`,
   unpaidIssued: () =>
-    `.[] | select(._doc_type == "invoice_issued" and .payment_status != "completed")`,
+    `.[] | select(${TX_MATCH.invoice_issued} and .payment_status != "completed")`,
   overdueIssued: () =>
-    `.[] | select(._doc_type == "invoice_issued" and .payment_status != "completed" and .due_date < "${todayISO()}")`,
+    `.[] | select(${TX_MATCH.invoice_issued} and .payment_status != "completed" and .due_date < "${todayISO()}")`,
 };
 
 async function listAccounting(

@@ -37,7 +37,6 @@ const NAV: { section: string; items: NavItem[] }[] = [
         href: "/invoices/received",
         label: "Faktúry prijaté",
         icon: FileText,
-        soon: true,
       },
       { href: "/bank", label: "Banka", icon: Landmark, soon: true },
       {

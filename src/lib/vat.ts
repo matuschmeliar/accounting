@@ -222,16 +222,20 @@ function classifyRegime(d: Record<string, unknown>): VatRegime {
 export async function computeVatReports(period: Period): Promise<VatReports> {
   const { start, end } = period;
 
+  // Robustné matchery — fallback z kind+functional_type ak _doc_type chýba
+  const ISSUED_MATCH = `(._doc_type == "invoice_issued" or (._doc_type == null and .kind == "predaj" and .functional_type == "faktúra"))`;
+  const RECEIVED_MATCH = `(._doc_type == "invoice_received" or (._doc_type == null and .kind == "nákup" and .functional_type == "faktúra"))`;
+
   // Pull all needed data in parallel
   const [issuedRes, receivedRes, customersRes, suppliersRes, ownRes] =
     await Promise.all([
       datamap.listInstances({
         json_schema_id: SCHEMA.transaction,
-        jq_filter: `.[] | select(._doc_type == "invoice_issued" and .date >= "${start}" and .date <= "${end}")`,
+        jq_filter: `.[] | select(${ISSUED_MATCH} and .date >= "${start}" and .date <= "${end}")`,
       }),
       datamap.listInstances({
         json_schema_id: SCHEMA.transaction,
-        jq_filter: `.[] | select(._doc_type == "invoice_received" and .date >= "${start}" and .date <= "${end}")`,
+        jq_filter: `.[] | select(${RECEIVED_MATCH} and .date >= "${start}" and .date <= "${end}")`,
       }),
       datamap.listInstances({
         json_schema_id: SCHEMA.organization,
