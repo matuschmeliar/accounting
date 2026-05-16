@@ -48,13 +48,33 @@ DÔLEŽITÉ PRAVIDLÁ:
 - Pri tabuľkách použij markdown tabuľky.
 - Pri sumách vždy uveď menu (€) a presnosť na 2 desatinné miesta.`;
 
+function contextHint(path?: string): string {
+  if (!path) return "";
+  const map: Record<string, string> = {
+    "/": "Dashboard — prehľad KPI a posledných faktúr.",
+    "/invoices/issued": "Zoznam vystavených faktúr (_doc_type=invoice_issued).",
+    "/invoices/received":
+      "Zoznam prijatých faktúr (_doc_type=invoice_received).",
+    "/customers": "Zoznam klientov (_doc_type=customer).",
+    "/suppliers": "Zoznam dodávateľov (_doc_type=supplier).",
+    "/bank": "Bankové transakcie (_doc_type=bank_line).",
+    "/documents": "Súbory a dokumenty (_doc_type=document).",
+    "/vat": "DPH dashboard za aktuálne obdobie.",
+  };
+  const desc = map[path] ?? path;
+  return `\n\nKONTEXT: Užívateľ práve pozerá stránku '${path}'. ${desc} Pri odpovedi to ber do úvahy a odkazuj sa na to čo vidí.`;
+}
+
 export async function POST(req: Request) {
-  const { messages }: { messages: UIMessage[] } = await req.json();
+  const body = (await req.json()) as {
+    messages: UIMessage[];
+    context?: { path?: string };
+  };
 
   const result = streamText({
     model: anthropic("claude-sonnet-4-5"),
-    system: SYSTEM_PROMPT,
-    messages: await convertToModelMessages(messages),
+    system: SYSTEM_PROMPT + contextHint(body.context?.path),
+    messages: await convertToModelMessages(body.messages),
     tools,
     stopWhen: stepCountIs(10),
   });
