@@ -63,7 +63,7 @@ const NAV: { section: string; items: NavItem[] }[] = [
   {
     section: "Dane & reporty",
     items: [
-      { href: "/vat", label: "DPH", icon: Receipt, soon: true },
+      { href: "/vat", label: "DPH výkazy", icon: Receipt },
       { href: "/reports", label: "Reporty", icon: BarChart3, soon: true },
     ],
   },

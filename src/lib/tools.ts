@@ -1,6 +1,7 @@
 import { tool } from "ai";
 import { z } from "zod";
 import { datamap, SCHEMA } from "./datamap";
+import { computeVatReports, monthlyPeriod } from "./vat";
 
 export const tools = {
   list_instances: tool({
@@ -169,6 +170,57 @@ export const tools = {
       const total_vat = round2(summary.reduce((s, r) => s + r.vat, 0));
       const total_incl = round2(total_base + total_vat);
       return { summary, total_base, total_vat, total_incl };
+    },
+  }),
+
+  compute_vat_return: tool({
+    description:
+      "Deterministický výpočet všetkých 3 DPH výkazov za zvolené obdobie: " +
+      "Priznanie DPH (DPHv25 oddiely I-VI), Kontrolný výkaz (A.1/A.2/B.1/B.2/C.1/C.2) a " +
+      "Súhrnný výkaz (IC dodania, B2B služby). " +
+      "Číta všetky faktúry z Datamap pre dané obdobie, agreguje podľa _vat_regime a sadzby. " +
+      "Použij keď sa užívateľ pýta 'Priprav DPH za...' alebo 'Aký je nadmerný odpočet za...'.",
+    inputSchema: z.object({
+      year: z.number().describe("Rok obdobia, napr. 2026"),
+      month: z
+        .number()
+        .min(1)
+        .max(12)
+        .describe("Mesiac obdobia 1-12 (mesačný platca DPH)"),
+    }),
+    execute: async ({ year, month }) => {
+      const period = monthlyPeriod(year, month);
+      const report = await computeVatReports(period);
+      return {
+        period: report.period,
+        verdict: {
+          output_vat: report.dpDph.section_VI.output_vat_total,
+          input_vat: report.dpDph.section_VI.input_vat_total,
+          balance: report.dpDph.section_VI.balance,
+          interpretation:
+            report.dpDph.section_VI.balance > 0
+              ? "Vlastná daňová povinnosť — zaplatiť FS SR"
+              : report.dpDph.section_VI.balance < 0
+              ? "Nadmerný odpočet — nárok na vrátenie"
+              : "Nulové vysporiadanie",
+        },
+        dp_dph: report.dpDph,
+        kv_dph_summary: {
+          A1_count: report.kvDph.A1.length,
+          A2_count: report.kvDph.A2.length,
+          B1_count: report.kvDph.B1.length,
+          B2_count: report.kvDph.B2.length,
+          C1_count: report.kvDph.C1.length,
+          C2_count: report.kvDph.C2.length,
+        },
+        suhrnny: {
+          required: report.suhrnny.required,
+          frequency: report.suhrnny.frequency,
+          totals: report.suhrnny.totals,
+        },
+        counts: report.counts,
+        warnings: report.warnings,
+      };
     },
   }),
 };
