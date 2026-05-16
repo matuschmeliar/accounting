@@ -70,7 +70,7 @@ const NAV: { section: string; items: NavItem[] }[] = [
   {
     section: "",
     items: [
-      { href: "/settings", label: "Nastavenia", icon: Settings, soon: true },
+      { href: "/settings", label: "Nastavenia", icon: Settings },
     ],
   },
 ];

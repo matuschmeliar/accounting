@@ -1,6 +1,7 @@
 import { anthropic } from "@ai-sdk/anthropic";
 import { convertToModelMessages, stepCountIs, streamText, UIMessage } from "ai";
 import { tools } from "@/lib/tools";
+import { getCompanySettings } from "@/app/settings/actions";
 
 export const maxDuration = 30;
 
@@ -60,9 +61,43 @@ function contextHint(path?: string): string {
     "/bank": "Bankové transakcie (_doc_type=bank_line).",
     "/documents": "Súbory a dokumenty (_doc_type=document).",
     "/vat": "DPH dashboard za aktuálne obdobie.",
+    "/settings": "Firemné nastavenia — užívateľ tu edituje údaje vlastnej firmy.",
   };
   const desc = map[path] ?? path;
-  return `\n\nKONTEXT: Užívateľ práve pozerá stránku '${path}'. ${desc} Pri odpovedi to ber do úvahy a odkazuj sa na to čo vidí.`;
+  return `\n\nKONTEXT STRÁNKY: Užívateľ práve pozerá '${path}'. ${desc} Pri odpovedi to ber do úvahy a odkazuj sa na to čo vidí.`;
+}
+
+async function companyContext(): Promise<string> {
+  try {
+    const own = await getCompanySettings();
+    if (!own) {
+      return `\n\nNAŠA FIRMA: Zatiaľ NEMÁM údaje o tvojej firme (žiadna 'own_company' inštancia v Datamap). Pred vystavením faktúr ti odporúčam doplniť nastavenia na /settings. Pri vystavovaní faktúr použij placeholder a v záverečnom súhrne to spomeň.`;
+    }
+    const d = own.data as Record<string, unknown>;
+    const office = (d.registered_office ?? {}) as Record<string, unknown>;
+    const lines = [
+      `\n\nNAŠA FIRMA (vystavovateľ faktúr, _doc_type=own_company, UUID=${own.instance_id}):`,
+      `- Názov: ${d.legal_name ?? d.name ?? "—"}`,
+      `- Právna forma: ${d.kind ?? "—"}`,
+      `- IČO: ${d.registration_number ?? "—"}`,
+      `- IČ DPH: ${d.vat_number ?? "—"}`,
+      `- DIČ: ${d._tax_id ?? "—"}`,
+      `- Sídlo: ${[office.street, office.city, office.postal_code]
+        .filter(Boolean)
+        .join(", ") || "—"}`,
+      `- IBAN: ${d._iban ?? "—"} (${d._bank_name ?? "—"})`,
+      `- DPH obdobie: ${d._vat_period ?? "monthly"}, default sadzba ${
+        d._default_vat_rate ?? 23
+      } %`,
+      `- Faktúra prefix: ${d._invoice_prefix ?? "FV-"} (ďalšie číslo: ${
+        d._invoice_next_number ?? 1
+      })`,
+      `- Default splatnosť: ${d._default_payment_days ?? 14} dní`,
+    ];
+    return lines.join("\n");
+  } catch {
+    return "";
+  }
 }
 
 export async function POST(req: Request) {
@@ -71,9 +106,11 @@ export async function POST(req: Request) {
     context?: { path?: string };
   };
 
+  const company = await companyContext();
+
   const result = streamText({
     model: anthropic("claude-sonnet-4-5"),
-    system: SYSTEM_PROMPT + contextHint(body.context?.path),
+    system: SYSTEM_PROMPT + company + contextHint(body.context?.path),
     messages: await convertToModelMessages(body.messages),
     tools,
     stopWhen: stepCountIs(10),
