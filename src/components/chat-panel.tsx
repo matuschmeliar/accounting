@@ -2,10 +2,15 @@
 
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
-import { ChevronLeft, ChevronRight, MessageSquare, Sparkles } from "lucide-react";
+import {
+  ArrowUp,
+  ChevronLeft,
+  ChevronRight,
+  MessageSquare,
+  Sparkles,
+} from "lucide-react";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 type Props = {
@@ -27,68 +32,83 @@ export function ChatPanel({ open, onToggle }: Props) {
 
   if (!open) {
     return (
-      <aside className="hidden md:flex w-12 shrink-0 flex-col items-center gap-2 border-l border-zinc-200 bg-white py-3">
+      <aside className="hidden md:flex w-12 shrink-0 flex-col items-center gap-2 border-l border-border bg-card py-3">
         <button
           type="button"
           onClick={onToggle}
           aria-label="Otvoriť chat"
-          className="rounded-md p-2 text-zinc-600 hover:bg-zinc-100"
+          className="rounded-md p-2 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
           title="Otvoriť chat (Cmd+K)"
         >
-          <ChevronLeft className="h-5 w-5" />
+          <ChevronLeft className="h-4 w-4" />
         </button>
-        <div className="rounded-md p-2 text-zinc-400">
-          <MessageSquare className="h-5 w-5" />
+        <div className="rounded-md p-2 text-muted-foreground/60">
+          <MessageSquare className="h-4 w-4" />
         </div>
       </aside>
     );
   }
 
   return (
-    <aside className="hidden md:flex w-96 shrink-0 flex-col border-l border-zinc-200 bg-white">
-      <header className="flex items-center justify-between border-b border-zinc-200 px-3 py-2.5">
-        <div className="flex items-center gap-2">
-          <Sparkles className="h-4 w-4 text-zinc-600" />
-          <span className="text-sm font-medium">AI účtovník</span>
+    <aside className="hidden md:flex w-[400px] shrink-0 flex-col border-l border-border bg-card">
+      <header className="flex items-center justify-between px-5 pt-5 pb-3">
+        <div>
+          <h2 className="font-serif text-[20px] font-medium leading-tight">
+            AI účtovník
+          </h2>
+          <p className="text-[12px] text-muted-foreground mt-0.5">
+            Pýtaj sa, hľadaj v dátach, vytváraj záznamy hlasom.
+          </p>
         </div>
         <button
           type="button"
           onClick={onToggle}
           aria-label="Zatvoriť chat"
-          className="rounded-md p-1.5 text-zinc-500 hover:bg-zinc-100"
-          title="Zatvoriť chat"
+          className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+          title="Zatvoriť (Cmd+K)"
         >
           <ChevronRight className="h-4 w-4" />
         </button>
       </header>
 
-      <div className="flex-1 overflow-y-auto px-3 py-3">
+      <div className="flex-1 overflow-y-auto px-5 py-2 space-y-4">
         {messages.length === 0 && (
-          <div className="rounded-md border border-dashed border-zinc-300 p-3 text-xs text-zinc-600">
-            <p className="font-medium text-zinc-900">Ahoj!</p>
-            <p className="mt-1">
-              Pýtaj sa, alebo vytváraj záznamy hlasom. Skús napr.:
-            </p>
-            <ul className="mt-2 list-disc pl-4 space-y-0.5">
-              <li>&ldquo;Ukáž neuhradené faktúry&rdquo;</li>
-              <li>&ldquo;Vystav FV za 10h × 80 € klientovi ACME&rdquo;</li>
-              <li>&ldquo;Spočítaj DPH za apríl&rdquo;</li>
-            </ul>
+          <div className="space-y-3 mt-2">
+            <SuggestionBtn
+              text="Ukáž neuhradené faktúry"
+              onClick={() => sendMessage({ text: "Ukáž neuhradené faktúry" })}
+            />
+            <SuggestionBtn
+              text="Vystav FV za 10h × 80 € klientovi ACME s DPH 23%"
+              onClick={() =>
+                sendMessage({
+                  text: "Vystav FV za 10h × 80 € klientovi ACME s DPH 23%",
+                })
+              }
+            />
+            <SuggestionBtn
+              text="Spočítaj DPH za aktuálny mesiac"
+              onClick={() =>
+                sendMessage({ text: "Spočítaj DPH za aktuálny mesiac" })
+              }
+            />
           </div>
         )}
 
-        <div className="space-y-3 mt-2">
-          {messages.map((m) => (
-            <ChatMessage key={m.id} message={m} />
-          ))}
-          {isLoading && (
-            <div className="text-xs text-zinc-400 italic">premýšľam…</div>
-          )}
-        </div>
+        {messages.map((m) => (
+          <ChatMessage key={m.id} message={m} />
+        ))}
+
+        {isLoading && (
+          <div className="flex items-center gap-2 text-[12px] text-muted-foreground italic">
+            <Sparkles className="h-3 w-3 animate-pulse" />
+            premýšľam…
+          </div>
+        )}
       </div>
 
       <form
-        className="border-t border-zinc-200 p-2.5"
+        className="px-5 pb-5 pt-2"
         onSubmit={(e) => {
           e.preventDefault();
           if (!input.trim() || isLoading) return;
@@ -96,20 +116,53 @@ export function ChatPanel({ open, onToggle }: Props) {
           setInput("");
         }}
       >
-        <div className="flex gap-2">
+        <div className="relative">
           <input
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="Napíš správu…"
-            className="flex-1 rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm outline-none focus:border-zinc-900"
+            placeholder="Spýtaj sa AI účtovníka…"
+            className="w-full rounded-xl border border-border bg-card pl-4 pr-12 py-3 text-[13px] outline-none focus:border-foreground/30 placeholder:text-muted-foreground/60 transition-colors"
             disabled={isLoading}
           />
-          <Button type="submit" size="sm" disabled={isLoading || !input.trim()}>
-            Pošli
-          </Button>
+          <button
+            type="submit"
+            disabled={isLoading || !input.trim()}
+            aria-label="Pošli"
+            className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-lg bg-foreground p-2 text-background disabled:opacity-30 hover:bg-foreground/90 transition-colors"
+          >
+            <ArrowUp className="h-3.5 w-3.5" />
+          </button>
+        </div>
+        <div className="mt-2 text-[10px] text-muted-foreground/60 px-1">
+          {pathname && pathname !== "/" ? (
+            <>
+              Kontext: <code className="font-mono">{pathname}</code> · ⌘K
+              skryje
+            </>
+          ) : (
+            <>⌘K skryje chat panel</>
+          )}
         </div>
       </form>
     </aside>
+  );
+}
+
+function SuggestionBtn({
+  text,
+  onClick,
+}: {
+  text: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="w-full text-left rounded-lg border border-border bg-card hover:bg-muted/60 transition-colors px-3.5 py-2.5 text-[13px] text-foreground/80"
+    >
+      {text}
+    </button>
   );
 }
 
@@ -117,21 +170,43 @@ type UIMsg = ReturnType<typeof useChat>["messages"][number];
 
 function ChatMessage({ message }: { message: UIMsg }) {
   const isUser = message.role === "user";
-  return (
-    <div className={cn("flex", isUser ? "justify-end" : "justify-start")}>
-      <div
-        className={cn(
-          "max-w-[90%] rounded-lg px-3 py-2 text-sm",
-          isUser
-            ? "bg-zinc-900 text-white"
-            : "bg-zinc-100 text-zinc-900 border border-zinc-200"
-        )}
-      >
-        <div className="space-y-2">
+
+  if (isUser) {
+    return (
+      <div className="flex justify-end">
+        <div className="max-w-[85%] rounded-2xl rounded-tr-md bg-foreground text-background px-3.5 py-2 text-[13px]">
           {message.parts.map((part, i) => {
             if (part.type === "text") {
               return (
                 <div key={i} className="whitespace-pre-wrap leading-relaxed">
+                  {part.text}
+                </div>
+              );
+            }
+            return null;
+          })}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-start gap-2.5">
+      <div className="h-6 w-6 shrink-0 rounded-full bg-accent text-accent-foreground flex items-center justify-center text-[10px] font-medium">
+        AI
+      </div>
+      <div className="flex-1 min-w-0 space-y-2">
+        <div className="text-[11px] font-medium text-muted-foreground">
+          AI účtovník
+          <span className="ml-1.5 text-muted-foreground/60 font-normal">
+            pred chvíľou
+          </span>
+        </div>
+        <div className="text-[13px] text-foreground/90 leading-relaxed space-y-2">
+          {message.parts.map((part, i) => {
+            if (part.type === "text") {
+              return (
+                <div key={i} className="whitespace-pre-wrap">
                   {part.text}
                 </div>
               );
@@ -143,23 +218,37 @@ function ChatMessage({ message }: { message: UIMsg }) {
                 input?: unknown;
                 output?: unknown;
               };
+              const stateLabel =
+                p.state === "output-available"
+                  ? "hotové"
+                  : p.state === "input-available"
+                  ? "spúšťam"
+                  : p.state ?? "";
               return (
                 <details
                   key={i}
-                  className="rounded border border-zinc-200 bg-white px-2 py-1 text-[11px] text-zinc-600"
+                  className={cn(
+                    "rounded-lg border border-border bg-muted/40 text-[11px]",
+                    "px-2.5 py-1.5"
+                  )}
                 >
-                  <summary className="cursor-pointer font-mono">
-                    🔧 {toolName}
-                    {p.state ? ` · ${p.state}` : ""}
+                  <summary className="cursor-pointer font-mono text-muted-foreground flex items-center gap-1.5">
+                    <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+                    <span className="text-foreground/80">{toolName}</span>
+                    {stateLabel && (
+                      <span className="text-muted-foreground/70">
+                        · {stateLabel}
+                      </span>
+                    )}
                   </summary>
                   {p.input != null && (
-                    <pre className="mt-1 overflow-x-auto whitespace-pre-wrap break-all text-[10px]">
-                      {`→ ${JSON.stringify(p.input, null, 2)}`}
+                    <pre className="mt-1.5 overflow-x-auto whitespace-pre-wrap break-all text-[10px] text-muted-foreground">
+                      {JSON.stringify(p.input, null, 2)}
                     </pre>
                   )}
                   {p.output != null && (
-                    <pre className="mt-1 overflow-x-auto whitespace-pre-wrap break-all text-[10px]">
-                      {`← ${JSON.stringify(p.output, null, 2).slice(0, 1500)}`}
+                    <pre className="mt-1.5 overflow-x-auto whitespace-pre-wrap break-all text-[10px] text-muted-foreground">
+                      {JSON.stringify(p.output, null, 2).slice(0, 1500)}
                     </pre>
                   )}
                 </details>

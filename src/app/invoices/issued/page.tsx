@@ -1,6 +1,4 @@
-import Link from "next/link";
 import { FileDown, Plus } from "lucide-react";
-import { Card, CardContent } from "@/components/ui/card";
 import {
   Table,
   TableBody,
@@ -9,7 +7,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
+import { PageHeader, Status } from "@/components/page-header";
 import { fmtDate, fmtEur, queries, sumAmount } from "@/lib/queries";
 
 export const dynamic = "force-dynamic";
@@ -27,61 +25,75 @@ export default async function InvoicesIssuedPage() {
   const totalUnpaid = sumAmount(unpaid);
 
   return (
-    <div className="px-8 py-6 max-w-6xl mx-auto">
-      <header className="flex items-center justify-between mb-5">
-        <div>
-          <div className="text-xs uppercase tracking-wide text-zinc-500">
-            Doklady
-          </div>
-          <h1 className="text-2xl font-semibold text-zinc-900">
-            Faktúry vystavené
-          </h1>
+    <div>
+      <PageHeader
+        eyebrow="Doklady"
+        title="Faktúry vystavené"
+        description="Tabuľka vystavených faktúr (FV) z JARVIS Datamap. Filter podľa _doc_type=invoice_issued nad schémou transaction.json."
+        crumbs={[{ label: "Doklady" }, { label: "Faktúry vystavené" }]}
+        actions={
+          <button
+            type="button"
+            disabled
+            title="Coming soon — zatiaľ vystav cez chat (⌘K)"
+            className="inline-flex items-center gap-1.5 rounded-md bg-foreground px-3 py-1.5 text-[12px] font-medium text-background opacity-50 cursor-not-allowed"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            Nová FV
+          </button>
+        }
+      />
+
+      <div className="px-6 py-6 max-w-6xl mx-auto space-y-6">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <SummaryStat label="Spolu faktúr" value={`${invoices.length}`} />
+          <SummaryStat label="Celkový obrat" value={fmtEur(totalAll)} />
+          <SummaryStat
+            label="Neuhradené"
+            value={`${unpaid.length} · ${fmtEur(totalUnpaid)}`}
+            warn={unpaid.length > 0}
+          />
         </div>
-        <button
-          type="button"
-          disabled
-          className="inline-flex items-center gap-1.5 rounded-md bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white opacity-50 cursor-not-allowed"
-          title="Coming soon — zatiaľ vystavuj cez chat"
-        >
-          <Plus className="h-4 w-4" />
-          Nová FV
-        </button>
-      </header>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-5">
-        <SummaryStat label="Spolu faktúr" value={`${invoices.length}`} />
-        <SummaryStat label="Celkový obrat" value={fmtEur(totalAll)} />
-        <SummaryStat
-          label="Neuhradené"
-          value={`${unpaid.length} · ${fmtEur(totalUnpaid)}`}
-          warn={unpaid.length > 0}
-        />
-      </div>
-
-      <Card>
-        <CardContent className="p-0">
+        <div className="rounded-xl border border-border bg-card overflow-hidden">
           {sorted.length === 0 ? (
-            <div className="px-6 py-12 text-center">
-              <FileDown className="h-10 w-10 text-zinc-300 mx-auto mb-3" />
-              <div className="text-sm font-medium text-zinc-700">
+            <div className="px-6 py-16 text-center">
+              <FileDown className="h-10 w-10 text-muted-foreground/40 mx-auto mb-3" />
+              <div className="font-serif text-[17px] font-medium">
                 Zatiaľ žiadne vystavené faktúry
               </div>
-              <div className="mt-1 text-xs text-zinc-500">
-                Vytvor prvú cez chat: „Vystav FV za X € klientovi Y&ldquo;
+              <div className="mt-1.5 text-[12px] text-muted-foreground">
+                Vytvor prvú cez chat: „Vystav FV za X € klientovi Y&ldquo; (⌘K)
               </div>
             </div>
           ) : (
             <Table>
               <TableHeader>
-                <TableRow>
-                  <TableHead>Číslo</TableHead>
-                  <TableHead>Dátum</TableHead>
-                  <TableHead>Splatnosť</TableHead>
-                  <TableHead>Klient</TableHead>
-                  <TableHead className="text-right">Bez DPH</TableHead>
-                  <TableHead className="text-right">DPH</TableHead>
-                  <TableHead className="text-right">Spolu</TableHead>
-                  <TableHead>Stav</TableHead>
+                <TableRow className="bg-muted/40 hover:bg-muted/40">
+                  <TableHead className="text-[11px] uppercase tracking-[0.06em] text-muted-foreground">
+                    Číslo
+                  </TableHead>
+                  <TableHead className="text-[11px] uppercase tracking-[0.06em] text-muted-foreground">
+                    Dátum
+                  </TableHead>
+                  <TableHead className="text-[11px] uppercase tracking-[0.06em] text-muted-foreground">
+                    Splatnosť
+                  </TableHead>
+                  <TableHead className="text-[11px] uppercase tracking-[0.06em] text-muted-foreground">
+                    Klient
+                  </TableHead>
+                  <TableHead className="text-[11px] uppercase tracking-[0.06em] text-muted-foreground text-right">
+                    Bez DPH
+                  </TableHead>
+                  <TableHead className="text-[11px] uppercase tracking-[0.06em] text-muted-foreground text-right">
+                    DPH
+                  </TableHead>
+                  <TableHead className="text-[11px] uppercase tracking-[0.06em] text-muted-foreground text-right">
+                    Spolu
+                  </TableHead>
+                  <TableHead className="text-[11px] uppercase tracking-[0.06em] text-muted-foreground">
+                    Stav
+                  </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -91,31 +103,31 @@ export default async function InvoicesIssuedPage() {
                   return (
                     <TableRow
                       key={inv.instance_id}
-                      className="text-sm"
+                      className="text-[13px] hover:bg-muted/40"
                     >
                       <TableCell className="font-medium">
                         {String(d._invoice_number ?? d.name ?? "—")}
                       </TableCell>
-                      <TableCell className="text-zinc-600">
+                      <TableCell className="text-muted-foreground">
                         {fmtDate(String(d.date ?? ""))}
                       </TableCell>
-                      <TableCell className="text-zinc-600">
+                      <TableCell className="text-muted-foreground">
                         {fmtDate(String(d.due_date ?? ""))}
                       </TableCell>
-                      <TableCell className="text-zinc-600 truncate max-w-[200px]">
+                      <TableCell className="text-foreground/80 truncate max-w-[200px]">
                         {String(d._customer_name ?? "—")}
                       </TableCell>
                       <TableCell className="text-right tabular-nums">
                         {fmtEur(Number(d._total_excl_vat ?? 0))}
                       </TableCell>
-                      <TableCell className="text-right tabular-nums text-zinc-500">
+                      <TableCell className="text-right tabular-nums text-muted-foreground">
                         {fmtEur(Number(d.tax_amount ?? 0))}
                       </TableCell>
                       <TableCell className="text-right tabular-nums font-medium">
                         {fmtEur(Number(d.amount ?? 0))}
                       </TableCell>
                       <TableCell>
-                        <StatusPill status={status} />
+                        <PaymentStatus status={status} />
                       </TableCell>
                     </TableRow>
                   );
@@ -123,21 +135,20 @@ export default async function InvoicesIssuedPage() {
               </TableBody>
             </Table>
           )}
-        </CardContent>
-      </Card>
+        </div>
 
-      <p className="mt-4 text-xs text-zinc-500">
-        Dáta zo schémy{" "}
-        <code className="text-zinc-600">
-          schemas/event/real/transaction.json
-        </code>
-        , filter <code className="text-zinc-600">_doc_type=invoice_issued</code>
-        . Detaily a editácia coming soon — zatiaľ použij{" "}
-        <Link href="#" className="underline">
-          chat (⌘K)
-        </Link>
-        .
-      </p>
+        <p className="text-[11px] text-muted-foreground/80 italic">
+          Zdroj:{" "}
+          <code className="font-mono text-muted-foreground not-italic">
+            schemas/event/real/transaction.json
+          </code>{" "}
+          · filter{" "}
+          <code className="font-mono text-muted-foreground not-italic">
+            _doc_type=invoice_issued
+          </code>
+          . Detail faktúry a editácia coming soon.
+        </p>
+      </div>
     </div>
   );
 }
@@ -152,27 +163,28 @@ function SummaryStat({
   warn?: boolean;
 }) {
   return (
-    <Card>
-      <CardContent className="p-4">
-        <div className="text-xs text-zinc-500">{label}</div>
-        <div
-          className={`text-lg font-semibold tabular-nums ${
-            warn ? "text-amber-600" : "text-zinc-900"
-          }`}
-        >
-          {value}
-        </div>
-      </CardContent>
-    </Card>
+    <div className="rounded-xl border border-border bg-card px-5 py-4">
+      <div className="text-[11px] uppercase tracking-[0.06em] text-muted-foreground">
+        {label}
+      </div>
+      <div
+        className={`mt-1 font-serif text-[22px] font-medium tabular-nums ${
+          warn ? "text-amber-700" : ""
+        }`}
+      >
+        {value}
+      </div>
+    </div>
   );
 }
 
-function StatusPill({ status }: { status: string }) {
-  const cfg = {
-    completed: { label: "Uhradená", variant: "default" as const },
-    pending: { label: "Čaká", variant: "secondary" as const },
-    cancelled: { label: "Storno", variant: "outline" as const },
-    refunded: { label: "Refund", variant: "outline" as const },
-  }[status] ?? { label: status, variant: "secondary" as const };
-  return <Badge variant={cfg.variant}>{cfg.label}</Badge>;
+function PaymentStatus({ status }: { status: string }) {
+  const map: Record<string, { kind: Parameters<typeof Status>[0]["kind"]; label: string }> = {
+    completed: { kind: "ok", label: "Uhradená" },
+    pending: { kind: "neutral", label: "Čaká" },
+    cancelled: { kind: "neutral", label: "Storno" },
+    refunded: { kind: "neutral", label: "Refund" },
+  };
+  const cfg = map[status] ?? { kind: "neutral" as const, label: status };
+  return <Status kind={cfg.kind} label={cfg.label} />;
 }

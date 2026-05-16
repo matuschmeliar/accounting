@@ -1,5 +1,4 @@
 import {
-  ArrowDownRight,
   ArrowUpRight,
   CircleDollarSign,
   TrendingDown,
@@ -8,11 +7,10 @@ import {
   Users,
   AlertTriangle,
   FileDown,
-  Sparkles,
+  Plus,
 } from "lucide-react";
 import Link from "next/link";
-import { Card, CardContent } from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
+import { PageHeader, Status } from "@/components/page-header";
 import {
   fmtDate,
   fmtEur,
@@ -52,94 +50,97 @@ export default async function DashboardPage() {
     .slice(0, 6);
 
   return (
-    <div className="px-8 py-6 max-w-6xl mx-auto">
-      <header className="flex items-center justify-between mb-6">
-        <div>
-          <div className="text-xs uppercase tracking-wide text-zinc-500">
-            Obdobie
-          </div>
-          <h1 className="text-2xl font-semibold text-zinc-900">
-            {periodLabel}
-          </h1>
+    <div>
+      <PageHeader
+        eyebrow={`Obdobie · ${periodLabel}`}
+        title="Dashboard"
+        description="Prehľad výnosov, nákladov, otvorených pohľadávok a aktivity tvojej firmy. Dáta sa naťahujú priamo z JARVIS Datamap."
+        crumbs={[{ label: "Prehľad" }]}
+        actions={
+          <button
+            type="button"
+            disabled
+            title="Coming soon"
+            className="inline-flex items-center gap-1.5 rounded-md bg-foreground px-3 py-1.5 text-[12px] font-medium text-background opacity-50 cursor-not-allowed"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            Nová faktúra
+          </button>
+        }
+      />
+
+      <div className="px-6 py-6 max-w-6xl mx-auto space-y-6">
+        {/* Top row KPIs */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <KpiCard
+            label="Príjmy MTD"
+            value={fmtEur(kpis.revenueMTD)}
+            icon={TrendingUp}
+            sublabel={`${kpis.invoicesIssuedCountMTD} vystavených FV`}
+          />
+          <KpiCard
+            label="Náklady MTD"
+            value={fmtEur(kpis.expensesMTD)}
+            icon={TrendingDown}
+            sublabel={`${kpis.invoicesReceivedCountMTD} prijatých FP`}
+          />
+          <KpiCard
+            label="Zisk MTD"
+            value={fmtEur(kpis.profitMTD)}
+            icon={CircleDollarSign}
+            sublabel="Príjmy − náklady"
+            highlight={kpis.profitMTD >= 0}
+          />
         </div>
-        <div className="text-xs text-zinc-500 flex items-center gap-1.5">
-          <Sparkles className="h-3.5 w-3.5" />
-          Dáta z JARVIS Datamap · live
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <KpiCard
+            label="Otvorené pohľadávky"
+            value={fmtEur(kpis.unpaidAmount)}
+            icon={Wallet}
+            sublabel={`${kpis.unpaidCount} neuhradené FV`}
+          />
+          <KpiCard
+            label="Po splatnosti"
+            value={fmtEur(kpis.overdueAmount)}
+            icon={AlertTriangle}
+            sublabel={`${kpis.overdueCount} faktúr meškajú`}
+            warning={kpis.overdueCount > 0}
+          />
+          <KpiCard
+            label="Partneri"
+            value={`${kpis.customersCount + kpis.suppliersCount}`}
+            icon={Users}
+            sublabel={`${kpis.customersCount} klientov · ${kpis.suppliersCount} dodávateľov`}
+          />
         </div>
-      </header>
 
-      {/* Top row KPIs */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
-        <KpiCard
-          label="Príjmy MTD"
-          value={fmtEur(kpis.revenueMTD)}
-          icon={TrendingUp}
-          sublabel={`${kpis.invoicesIssuedCountMTD} vystavených FV`}
-          tone="positive"
-        />
-        <KpiCard
-          label="Náklady MTD"
-          value={fmtEur(kpis.expensesMTD)}
-          icon={TrendingDown}
-          sublabel={`${kpis.invoicesReceivedCountMTD} prijatých FP`}
-          tone="neutral"
-        />
-        <KpiCard
-          label="Zisk MTD"
-          value={fmtEur(kpis.profitMTD)}
-          icon={CircleDollarSign}
-          sublabel="Príjmy − náklady"
-          tone={kpis.profitMTD >= 0 ? "positive" : "negative"}
-        />
-      </div>
-
-      {/* Bottom row KPIs */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
-        <KpiCard
-          label="Otvorené pohľadávky"
-          value={fmtEur(kpis.unpaidAmount)}
-          icon={Wallet}
-          sublabel={`${kpis.unpaidCount} neuhradené FV`}
-          tone="neutral"
-        />
-        <KpiCard
-          label="Po splatnosti"
-          value={fmtEur(kpis.overdueAmount)}
-          icon={AlertTriangle}
-          sublabel={`${kpis.overdueCount} faktúr meškajú`}
-          tone={kpis.overdueCount > 0 ? "warning" : "neutral"}
-        />
-        <KpiCard
-          label="Partneri"
-          value={`${kpis.customersCount + kpis.suppliersCount}`}
-          icon={Users}
-          sublabel={`${kpis.customersCount} klientov · ${kpis.suppliersCount} dodávateľov`}
-          tone="neutral"
-        />
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {/* Recent activity */}
-        <Card className="lg:col-span-2">
-          <CardContent className="p-5">
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="text-sm font-semibold text-zinc-900">
-                Nedávna aktivita
-              </h2>
+        {/* Two-column section */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          <div className="lg:col-span-2 rounded-xl border border-border bg-card">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-border/60">
+              <div>
+                <h2 className="font-serif text-[17px] font-medium">
+                  Nedávna aktivita
+                </h2>
+                <p className="text-[12px] text-muted-foreground mt-0.5">
+                  Posledných {recent.length} vystavených faktúr
+                </p>
+              </div>
               <Link
                 href="/invoices/issued"
-                className="text-xs text-zinc-500 hover:text-zinc-900"
+                className="text-[12px] text-muted-foreground hover:text-foreground transition-colors"
               >
-                Všetky faktúry →
+                Všetky →
               </Link>
             </div>
             {recent.length === 0 ? (
               <EmptyState
                 title="Žiadne faktúry zatiaľ"
-                body="Vytvor prvú faktúru cez chat alebo cez tlačidlo nižšie."
+                body="Vytvor prvú cez chat: „Vystav FV za X klientovi Y&ldquo;."
               />
             ) : (
-              <ul className="divide-y divide-zinc-100">
+              <ul className="divide-y divide-border/60">
                 {recent.map((i) => {
                   const d = i.data as Record<string, unknown>;
                   const number = String(d._invoice_number ?? d.name ?? "—");
@@ -148,75 +149,84 @@ export default async function DashboardPage() {
                   return (
                     <li
                       key={i.instance_id}
-                      className="flex items-center gap-3 py-2.5 text-sm"
+                      className="flex items-center gap-3 px-5 py-3 hover:bg-muted/40 transition-colors"
                     >
-                      <FileDown className="h-4 w-4 text-zinc-400" />
+                      <div className="h-8 w-8 shrink-0 rounded-md bg-muted/60 flex items-center justify-center">
+                        <FileDown className="h-3.5 w-3.5 text-muted-foreground" />
+                      </div>
                       <div className="flex-1 min-w-0">
-                        <div className="font-medium text-zinc-900 truncate">
+                        <div className="text-[13px] font-medium truncate">
                           {number}
                         </div>
-                        <div className="text-xs text-zinc-500">
+                        <div className="text-[11px] text-muted-foreground">
                           {fmtDate(String(d.date ?? ""))} ·{" "}
                           {fmtRelative(i.created_at)}
                         </div>
                       </div>
                       <div className="text-right">
-                        <div className="font-medium text-zinc-900">
+                        <div className="text-[13px] font-medium tabular-nums">
                           {fmtEur(amount)}
                         </div>
-                        <StatusBadge status={status} />
+                        <PaymentStatus status={status} />
                       </div>
                     </li>
                   );
                 })}
               </ul>
             )}
-          </CardContent>
-        </Card>
+          </div>
 
-        {/* Alerts / quick actions */}
-        <Card>
-          <CardContent className="p-5">
-            <h2 className="text-sm font-semibold text-zinc-900 mb-3">
-              Treba vyriešiť
-            </h2>
-            <ul className="space-y-2 text-sm">
+          <div className="rounded-xl border border-border bg-card">
+            <div className="px-5 py-4 border-b border-border/60">
+              <h2 className="font-serif text-[17px] font-medium">
+                Treba vyriešiť
+              </h2>
+              <p className="text-[12px] text-muted-foreground mt-0.5">
+                Otvorené úlohy a alerty
+              </p>
+            </div>
+            <div className="p-4 space-y-2">
               {kpis.overdueCount > 0 && (
-                <li className="flex items-start gap-2 rounded-md bg-amber-50 border border-amber-200 p-2.5">
-                  <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5" />
-                  <div>
-                    <div className="font-medium text-amber-900">
-                      {kpis.overdueCount} faktúr po splatnosti
+                <div className="flex items-start gap-2.5 rounded-lg border border-amber-200 bg-amber-50/60 p-3">
+                  <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[13px] font-medium text-amber-900">
+                      {kpis.overdueCount}{" "}
+                      {kpis.overdueCount === 1 ? "faktúra" : "faktúr"} po
+                      splatnosti
                     </div>
-                    <div className="text-xs text-amber-700">
+                    <div className="text-[11px] text-amber-700 mt-0.5">
                       Spolu {fmtEur(kpis.overdueAmount)}
                     </div>
+                    <Link
+                      href="/invoices/issued"
+                      className="mt-2 inline-flex text-[11px] font-medium text-amber-900 underline decoration-amber-300 underline-offset-2 hover:decoration-amber-500"
+                    >
+                      Pozrieť →
+                    </Link>
                   </div>
-                </li>
+                </div>
               )}
-              {kpis.unpaidCount === 0 && kpis.overdueCount === 0 && (
-                <li className="text-zinc-500 text-xs">
-                  Žiadne otvorené veci. ✨
-                </li>
+              {kpis.overdueCount === 0 && (
+                <div className="text-[12px] text-muted-foreground py-2 text-center">
+                  Nič nečaká na vyriešenie. ✨
+                </div>
               )}
-            </ul>
 
-            <Separator className="my-4" />
-
-            <h3 className="text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-2">
-              Rýchle akcie
-            </h3>
-            <div className="space-y-1.5 text-sm">
-              <QuickAction href="/invoices/issued" label="Faktúry vystavené" />
-              <QuickAction href="/customers" label="Klienti" />
-              <QuickAction
-                href="#"
-                label="Vystaviť novú faktúru (cez chat)"
-                hint="⌘K"
-              />
+              <div className="mt-4 space-y-0.5">
+                <div className="text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground mb-1.5 px-1">
+                  Rýchle akcie
+                </div>
+                <QuickAction href="/invoices/issued" label="Faktúry vystavené" />
+                <QuickAction href="/customers" label="Klienti" />
+                <QuickAction
+                  label="Vystaviť faktúru (cez chat)"
+                  hint="⌘K"
+                />
+              </div>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -227,45 +237,53 @@ function KpiCard({
   value,
   sublabel,
   icon: Icon,
-  tone = "neutral",
+  warning,
+  highlight,
 }: {
   label: string;
   value: string;
   sublabel: string;
   icon: typeof TrendingUp;
-  tone?: "positive" | "negative" | "warning" | "neutral";
+  warning?: boolean;
+  highlight?: boolean;
 }) {
-  const toneClass = {
-    positive: "text-emerald-600",
-    negative: "text-red-600",
-    warning: "text-amber-600",
-    neutral: "text-zinc-500",
-  }[tone];
-
   return (
-    <Card>
-      <CardContent className="p-5">
-        <div className="flex items-center justify-between text-xs text-zinc-500 mb-1">
-          <span>{label}</span>
-          <Icon className={`h-4 w-4 ${toneClass}`} />
-        </div>
-        <div className="text-2xl font-semibold text-zinc-900 tabular-nums">
-          {value}
-        </div>
-        <div className="mt-1 text-xs text-zinc-500">{sublabel}</div>
-      </CardContent>
-    </Card>
+    <div className="rounded-xl border border-border bg-card p-5">
+      <div className="flex items-center justify-between text-[11px] text-muted-foreground mb-2 uppercase tracking-[0.06em]">
+        <span>{label}</span>
+        <Icon
+          className={`h-3.5 w-3.5 ${
+            warning
+              ? "text-amber-600"
+              : highlight
+              ? "text-emerald-600"
+              : "text-muted-foreground/60"
+          }`}
+        />
+      </div>
+      <div
+        className={`font-serif text-[28px] font-medium tabular-nums leading-none ${
+          warning ? "text-amber-700" : ""
+        }`}
+      >
+        {value}
+      </div>
+      <div className="mt-1.5 text-[12px] text-muted-foreground">
+        {sublabel}
+      </div>
+    </div>
   );
 }
 
-function StatusBadge({ status }: { status: string }) {
-  const cfg = {
-    completed: { label: "Uhradená", cls: "text-emerald-600" },
-    pending: { label: "Čaká", cls: "text-zinc-500" },
-    cancelled: { label: "Storno", cls: "text-zinc-400" },
-    refunded: { label: "Refund", cls: "text-zinc-500" },
-  }[status] ?? { label: status, cls: "text-zinc-500" };
-  return <div className={`text-[10px] ${cfg.cls}`}>{cfg.label}</div>;
+function PaymentStatus({ status }: { status: string }) {
+  const map: Record<string, { kind: Parameters<typeof Status>[0]["kind"]; label: string }> = {
+    completed: { kind: "ok", label: "Uhradená" },
+    pending: { kind: "neutral", label: "Čaká" },
+    cancelled: { kind: "neutral", label: "Storno" },
+    refunded: { kind: "neutral", label: "Refund" },
+  };
+  const cfg = map[status] ?? { kind: "neutral" as const, label: status };
+  return <Status kind={cfg.kind} label={cfg.label} />;
 }
 
 function QuickAction({
@@ -273,25 +291,24 @@ function QuickAction({
   label,
   hint,
 }: {
-  href: string;
+  href?: string;
   label: string;
   hint?: string;
 }) {
-  const isLink = href !== "#";
+  const cls =
+    "flex items-center gap-2 rounded-md px-2 py-1.5 text-[13px] text-foreground/80 hover:bg-muted/60 transition-colors";
   const inner = (
     <>
-      <ArrowUpRight className="h-3.5 w-3.5 text-zinc-400" />
+      <ArrowUpRight className="h-3 w-3 text-muted-foreground" />
       <span className="flex-1">{label}</span>
       {hint && (
-        <kbd className="text-[10px] text-zinc-500 bg-zinc-100 px-1.5 py-0.5 rounded font-mono">
+        <kbd className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded font-mono">
           {hint}
         </kbd>
       )}
     </>
   );
-  const cls =
-    "flex items-center gap-2 rounded-md px-2 py-1.5 text-zinc-700 hover:bg-zinc-50";
-  return isLink ? (
+  return href ? (
     <Link href={href} className={cls}>
       {inner}
     </Link>
@@ -302,9 +319,9 @@ function QuickAction({
 
 function EmptyState({ title, body }: { title: string; body: string }) {
   return (
-    <div className="rounded-md border border-dashed border-zinc-300 px-3 py-6 text-center">
-      <div className="text-sm font-medium text-zinc-700">{title}</div>
-      <div className="mt-1 text-xs text-zinc-500">{body}</div>
+    <div className="px-5 py-10 text-center">
+      <div className="font-serif text-[16px] font-medium">{title}</div>
+      <div className="mt-1 text-[12px] text-muted-foreground">{body}</div>
     </div>
   );
 }
