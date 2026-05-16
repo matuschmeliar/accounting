@@ -1,16 +1,17 @@
 "use client";
 
 import { useChat } from "@ai-sdk/react";
-import { DefaultChatTransport } from "ai";
+import { DefaultChatTransport, UIMessage } from "ai";
 import {
   ArrowUp,
   ChevronLeft,
   ChevronRight,
+  Eraser,
   MessageSquare,
   Sparkles,
 } from "lucide-react";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 
 type Props = {
@@ -18,17 +19,69 @@ type Props = {
   onToggle: () => void;
 };
 
+const STORAGE_KEY = "accounting:chatHistory:v1";
+const MAX_STORED_MESSAGES = 200; // hard cap proti rastúcemu localStorage
+
+function loadStoredMessages(): UIMessage[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed as UIMessage[];
+  } catch {
+    return [];
+  }
+}
+
+function saveMessages(messages: UIMessage[]) {
+  if (typeof window === "undefined") return;
+  try {
+    const trimmed =
+      messages.length > MAX_STORED_MESSAGES
+        ? messages.slice(-MAX_STORED_MESSAGES)
+        : messages;
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(trimmed));
+  } catch {
+    // quota exceeded / private mode — fail silently
+  }
+}
+
 export function ChatPanel({ open, onToggle }: Props) {
   const pathname = usePathname();
   const [input, setInput] = useState("");
-  const { messages, sendMessage, status } = useChat({
+
+  // Load history once on mount (this useState initializer runs once per Chat instance).
+  // Note: typeof window check guards SSR. ChatPanel is "use client" but RSC still
+  // renders client components on server to generate initial HTML.
+  const [initialMessages] = useState<UIMessage[]>(() => loadStoredMessages());
+
+  const { messages, sendMessage, status, setMessages } = useChat({
     transport: new DefaultChatTransport({
       api: "/api/chat",
       body: () => ({ context: { path: pathname } }),
     }),
+    messages: initialMessages,
   });
 
+  // Sync to localStorage on every message change (after streaming completes).
+  useEffect(() => {
+    saveMessages(messages);
+  }, [messages]);
+
+  function clearHistory() {
+    if (!window.confirm("Vymazať celú históriu chatu? Túto akciu nie je možné vrátiť.")) return;
+    setMessages([]);
+    try {
+      window.localStorage.removeItem(STORAGE_KEY);
+    } catch {
+      // ignore
+    }
+  }
+
   const isLoading = status === "submitted" || status === "streaming";
+  const hasMessages = messages.length > 0;
 
   if (!open) {
     return (
@@ -51,24 +104,41 @@ export function ChatPanel({ open, onToggle }: Props) {
 
   return (
     <aside className="hidden md:flex w-[400px] shrink-0 flex-col border-l border-border bg-card">
-      <header className="flex items-center justify-between px-5 pt-5 pb-3">
-        <div>
+      <header className="flex items-start justify-between px-5 pt-5 pb-3 gap-2">
+        <div className="flex-1 min-w-0">
           <h2 className="font-serif text-[20px] font-medium leading-tight">
             AI účtovník
           </h2>
           <p className="text-[12px] text-muted-foreground mt-0.5">
-            Pýtaj sa, hľadaj v dátach, vytváraj záznamy hlasom.
+            {hasMessages
+              ? `${messages.length} ${
+                  messages.length === 1 ? "správa" : "správ"
+                } · história uložená v prehliadači`
+              : "Pýtaj sa, hľadaj v dátach, vytváraj záznamy hlasom."}
           </p>
         </div>
-        <button
-          type="button"
-          onClick={onToggle}
-          aria-label="Zatvoriť chat"
-          className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-          title="Zatvoriť (Cmd+K)"
-        >
-          <ChevronRight className="h-4 w-4" />
-        </button>
+        <div className="flex items-center gap-1 shrink-0">
+          {hasMessages && (
+            <button
+              type="button"
+              onClick={clearHistory}
+              aria-label="Vymazať históriu"
+              className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+              title="Vymazať históriu chatu"
+            >
+              <Eraser className="h-4 w-4" />
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={onToggle}
+            aria-label="Zatvoriť chat"
+            className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+            title="Zatvoriť (Cmd+K)"
+          >
+            <ChevronRight className="h-4 w-4" />
+          </button>
+        </div>
       </header>
 
       <div className="flex-1 overflow-y-auto px-5 py-2 space-y-4">
