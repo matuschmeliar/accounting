@@ -52,7 +52,7 @@ export async function POST(req: Request) {
   const { messages }: { messages: UIMessage[] } = await req.json();
 
   const result = streamText({
-    model: anthropic("claude-opus-4-7"),
+    model: anthropic("claude-sonnet-4-5"),
     system: SYSTEM_PROMPT,
     messages: await convertToModelMessages(messages),
     tools,
