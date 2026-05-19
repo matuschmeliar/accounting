@@ -126,22 +126,62 @@ function PeriodSummary({
           </div>
         </div>
       </div>
-      <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-border bg-muted/40">
-        <DownloadButton
-          report={report}
-          part="dp-dph"
-          label="Stiahnuť DP DPH (JSON)"
-        />
-        <DownloadButton
-          report={report}
-          part="kv-dph"
-          label="Stiahnuť KV DPH (JSON)"
-        />
-        <DownloadButton
-          report={report}
-          part="suhrnny"
-          label="Stiahnuť Súhrnný (JSON)"
-        />
+      <div className="border-t border-border bg-muted/40">
+        <div className="px-5 pt-3 pb-2 flex items-start justify-between gap-3">
+          <div className="text-[11px] text-muted-foreground leading-relaxed flex-1 min-w-0">
+            <strong className="text-foreground">XML pre FS SR podateľňu:</strong>{" "}
+            štruktúrne zodpovedá DPHv25 / KVDPHv25 / SVDPHv25, ale pred prvým
+            podaním overuj voči aktuálnemu XSD FS SR — schémy sa občas menia.
+            JSON je raw data export.
+          </div>
+        </div>
+        <div className="px-5 pb-3 flex flex-wrap items-center justify-end gap-2">
+          <div className="text-[10px] uppercase tracking-[0.06em] text-muted-foreground mr-2 self-center">
+            DP DPH:
+          </div>
+          <DownloadButton
+            report={report}
+            part="dp-dph"
+            format="xml"
+            label="XML"
+          />
+          <DownloadButton
+            report={report}
+            part="dp-dph"
+            format="json"
+            label="JSON"
+          />
+          <div className="text-[10px] uppercase tracking-[0.06em] text-muted-foreground mx-2 self-center">
+            KV DPH:
+          </div>
+          <DownloadButton
+            report={report}
+            part="kv-dph"
+            format="xml"
+            label="XML"
+          />
+          <DownloadButton
+            report={report}
+            part="kv-dph"
+            format="json"
+            label="JSON"
+          />
+          <div className="text-[10px] uppercase tracking-[0.06em] text-muted-foreground mx-2 self-center">
+            Súhrnný:
+          </div>
+          <DownloadButton
+            report={report}
+            part="suhrnny"
+            format="xml"
+            label="XML"
+          />
+          <DownloadButton
+            report={report}
+            part="suhrnny"
+            format="json"
+            label="JSON"
+          />
+        </div>
       </div>
     </div>
   );
