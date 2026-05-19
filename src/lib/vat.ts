@@ -50,10 +50,40 @@ export type VatRegime =
   | "reverse_charge_domestic"
   | "ic_supply"
   | "ic_acquisition"
+  | "ic_service_acquisition" // cezhraničná služba B2B z EÚ § 15 — samozdanenie 23 %
+  | "service_from_third_country" // služba z 3. krajiny § 69 ods. 2 — samozdanenie 23 %
   | "export"
   | "import"
   | "exempt"
+  | "non_vat_payer" // dodávateľ nie je platca DPH (SK firma bez IČ DPH) — nepatrí do DPH výkazov
   | "oss";
+
+/** Aliasy pre Claude-vymyslené názvy → kanonické. */
+const REGIME_ALIASES: Record<string, VatRegime> = {
+  ic_service_received: "ic_service_acquisition",
+  ic_services_acquisition: "ic_service_acquisition",
+  ic_services_received: "ic_service_acquisition",
+  eu_service: "ic_service_acquisition",
+  import_service: "service_from_third_country",
+  third_country_service: "service_from_third_country",
+  outside_eu_service: "service_from_third_country",
+  non_payer: "non_vat_payer",
+  not_vat_payer: "non_vat_payer",
+};
+
+const KNOWN_REGIMES: VatRegime[] = [
+  "standard",
+  "reverse_charge_domestic",
+  "ic_supply",
+  "ic_acquisition",
+  "ic_service_acquisition",
+  "service_from_third_country",
+  "export",
+  "import",
+  "exempt",
+  "non_vat_payer",
+  "oss",
+];
 
 export type Period = {
   start: string; // ISO date
@@ -98,6 +128,10 @@ export type DpDphSections = {
   /** Oddiel III — Dovoz / iné samozdanenie */
   section_III: {
     domestic_rc_recipient: { base: number; vat: number; count: number };
+    /** Cezhraničné EU služby B2B § 15 — samozdanenie 23 % */
+    ic_services: { base: number; vat: number; count: number };
+    /** Služby z 3. krajiny § 69 ods. 2 — samozdanenie 23 % */
+    third_country_services: { base: number; vat: number; count: number };
     import: { base: number; vat: number; count: number };
   };
   /** Oddiel IV — Oslobodené plnenia */
@@ -113,6 +147,10 @@ export type DpDphSections = {
     input_rate5: { base: number; vat: number; count: number };
     input_rc: { base: number; vat: number; count: number };
     input_ic: { base: number; vat: number; count: number };
+    /** Párový odpočet pre cezhraničné EU služby */
+    input_ic_services: { base: number; vat: number; count: number };
+    /** Párový odpočet pre služby z 3. krajiny */
+    input_third_country: { base: number; vat: number; count: number };
   };
   /** Oddiel VI — Vysporiadanie */
   section_VI: {
@@ -207,16 +245,36 @@ function inPeriod(date: string, start: string, end: string): boolean {
   return date >= start && date <= end;
 }
 
-function classifyRegime(d: Record<string, unknown>): VatRegime {
-  const raw = String(d._vat_regime ?? "").toLowerCase();
-  if (raw && raw !== "standard") return raw as VatRegime;
-  // fallback inferencia
-  const rate = num(d.tax_rate);
-  if (rate === 0) {
-    // môže byť IC, export, exempt — bez explicit flagu nevieme, default exempt
-    return "exempt";
+/**
+ * Klasifikuje _vat_regime hodnotu. Normalizuje aliasy, vráti "unknown" pre
+ * neznáme hodnoty a zapíše varovanie (namiesto silent ignore vo výkazoch).
+ */
+function classifyRegime(
+  d: Record<string, unknown>,
+  warnings: string[],
+  invoiceNumber: string
+): VatRegime | "unknown" {
+  const raw = String(d._vat_regime ?? "")
+    .toLowerCase()
+    .trim();
+  if (!raw) {
+    // fallback inferencia — bez explicit hodnoty
+    const rate = num(d.tax_rate);
+    return rate === 0 ? "exempt" : "standard";
   }
-  return "standard";
+  // Známy regime
+  if ((KNOWN_REGIMES as string[]).includes(raw)) {
+    return raw as VatRegime;
+  }
+  // Alias
+  if (raw in REGIME_ALIASES) {
+    return REGIME_ALIASES[raw];
+  }
+  // Neznámy — warning + ignorovať vo výkazoch
+  warnings.push(
+    `Faktúra ${invoiceNumber}: neznámy _vat_regime '${raw}' — ignorovaná vo výkazoch. Povolené: ${KNOWN_REGIMES.join(", ")}`
+  );
+  return "unknown";
 }
 
 export async function computeVatReports(period: Period): Promise<VatReports> {
@@ -276,6 +334,8 @@ export async function computeVatReports(period: Period): Promise<VatReports> {
     },
     section_III: {
       domestic_rc_recipient: { base: 0, vat: 0, count: 0 },
+      ic_services: { base: 0, vat: 0, count: 0 },
+      third_country_services: { base: 0, vat: 0, count: 0 },
       import: { base: 0, vat: 0, count: 0 },
     },
     section_IV: {
@@ -289,6 +349,8 @@ export async function computeVatReports(period: Period): Promise<VatReports> {
       input_rate5: { base: 0, vat: 0, count: 0 },
       input_rc: { base: 0, vat: 0, count: 0 },
       input_ic: { base: 0, vat: 0, count: 0 },
+      input_ic_services: { base: 0, vat: 0, count: 0 },
+      input_third_country: { base: 0, vat: 0, count: 0 },
     },
     section_VI: {
       output_vat_total: 0,
@@ -320,15 +382,16 @@ export async function computeVatReports(period: Period): Promise<VatReports> {
     const d = inv.data as Record<string, unknown>;
     if (!inPeriod(String(d.date ?? ""), start, end)) continue;
 
-    const regime = classifyRegime(d);
+    const invoiceNumber = String(
+      d._invoice_number ?? d.name ?? inv.instance_id.slice(0, 8)
+    );
+    const regime = classifyRegime(d, warnings, `FV ${invoiceNumber}`);
+    if (regime === "unknown") continue;
     const rate = num(d.tax_rate);
     const base = num(
       d._total_excl_vat ?? num(d.amount) - num(d.tax_amount)
     );
     const vatAmt = num(d.tax_amount);
-    const invoiceNumber = String(
-      d._invoice_number ?? d.name ?? inv.instance_id.slice(0, 8)
-    );
     const dvdp = String(d.date ?? "");
     const isCorrection = Boolean(d._is_correction);
     const correctsRef = d._corrects_invoice_number
@@ -355,7 +418,11 @@ export async function computeVatReports(period: Period): Promise<VatReports> {
       warnings.push(
         `FV ${invoiceNumber}: chýba _customer_id alebo customer nenájdený`
       );
-    } else if (!partnerVatNumber && regime !== "exempt") {
+    } else if (
+      !partnerVatNumber &&
+      regime !== "exempt" &&
+      regime !== "non_vat_payer"
+    ) {
       warnings.push(
         `FV ${invoiceNumber}: klient '${partnerName}' nemá IČ DPH — KV DPH ho vyžaduje`
       );
@@ -439,15 +506,16 @@ export async function computeVatReports(period: Period): Promise<VatReports> {
     const d = inv.data as Record<string, unknown>;
     if (!inPeriod(String(d.date ?? ""), start, end)) continue;
 
-    const regime = classifyRegime(d);
+    const invoiceNumber = String(
+      d._invoice_number ?? d.name ?? inv.instance_id.slice(0, 8)
+    );
+    const regime = classifyRegime(d, warnings, `FP ${invoiceNumber}`);
+    if (regime === "unknown") continue;
     const rate = num(d.tax_rate);
     const base = num(
       d._total_excl_vat ?? num(d.amount) - num(d.tax_amount)
     );
     const vatAmt = num(d.tax_amount);
-    const invoiceNumber = String(
-      d._invoice_number ?? d.name ?? inv.instance_id.slice(0, 8)
-    );
     const dvdp = String(d.date ?? "");
     const isCorrection = Boolean(d._is_correction);
     const correctsRef = d._corrects_invoice_number
@@ -456,18 +524,23 @@ export async function computeVatReports(period: Period): Promise<VatReports> {
 
     const supplierId = String(d._supplier_id ?? "");
     const supplier = supplierId ? supplierById.get(supplierId) : undefined;
-    const partnerVatNumber = supplier
-      ? String((supplier.data as Record<string, unknown>).vat_number ?? "")
-      : "";
+    const partnerVatNumber =
+      (supplier
+        ? String((supplier.data as Record<string, unknown>).vat_number ?? "")
+        : "") || String(d._supplier_vat_number ?? "");
     const partnerName = supplier
       ? String((supplier.data as Record<string, unknown>).name ?? "")
-      : undefined;
+      : String(d._supplier_name ?? "");
 
     if (!supplier) {
       warnings.push(
         `FP ${invoiceNumber}: chýba _supplier_id alebo supplier nenájdený`
       );
-    } else if (!partnerVatNumber && regime !== "exempt") {
+    } else if (
+      !partnerVatNumber &&
+      regime !== "exempt" &&
+      regime !== "non_vat_payer"
+    ) {
       warnings.push(
         `FP ${invoiceNumber}: dodávateľ '${partnerName}' nemá IČ DPH — KV DPH ho vyžaduje`
       );
@@ -524,10 +597,44 @@ export async function computeVatReports(period: Period): Promise<VatReports> {
       if (isCorrection) kv.C2.push(kvLineBase);
       else kv.B1.push(kvLineBase);
     } else if (regime === "import") {
+      // Dovoz tovaru — samozdanenie alebo colný úrad
       dp.section_III.import.base += base;
       dp.section_III.import.vat += vatAmt;
       dp.section_III.import.count += 1;
       kv.B1.push(kvLineBase);
+    } else if (regime === "ic_service_acquisition") {
+      // Cezhraničné EU služby B2B § 15 — samozdanenie 23 % → Oddiel III + V + KV B.1
+      if (vatAmt === 0 && rate === 0) {
+        warnings.push(
+          `FP ${invoiceNumber}: ic_service_acquisition s 0 % DPH — chýba samozdanená DPH 23 %. Použij compute_vat tool na výpočet a uložiť do tax_amount.`
+        );
+      }
+      dp.section_III.ic_services.base += base;
+      dp.section_III.ic_services.vat += vatAmt;
+      dp.section_III.ic_services.count += 1;
+      dp.section_V.input_ic_services.base += base;
+      dp.section_V.input_ic_services.vat += vatAmt;
+      dp.section_V.input_ic_services.count += 1;
+      if (isCorrection) kv.C2.push(kvLineBase);
+      else kv.B1.push(kvLineBase);
+    } else if (regime === "service_from_third_country") {
+      // Služba z 3. krajiny § 69 ods. 2 — samozdanenie 23 % → Oddiel III + V + KV B.1
+      if (vatAmt === 0 && rate === 0) {
+        warnings.push(
+          `FP ${invoiceNumber}: service_from_third_country s 0 % DPH — chýba samozdanená DPH 23 %. Použij compute_vat tool na výpočet a uložiť do tax_amount.`
+        );
+      }
+      dp.section_III.third_country_services.base += base;
+      dp.section_III.third_country_services.vat += vatAmt;
+      dp.section_III.third_country_services.count += 1;
+      dp.section_V.input_third_country.base += base;
+      dp.section_V.input_third_country.vat += vatAmt;
+      dp.section_V.input_third_country.count += 1;
+      if (isCorrection) kv.C2.push(kvLineBase);
+      else kv.B1.push(kvLineBase);
+    } else if (regime === "non_vat_payer" || regime === "exempt") {
+      // Dodávateľ nie je platca DPH (alebo plnenie oslobodené)
+      // → NEpatri do DP DPH ani KV DPH. Iba do nákladov. Žiadny warning.
     }
   }
 
@@ -570,6 +677,8 @@ export async function computeVatReports(period: Period): Promise<VatReports> {
       dp.section_I.rate5.vat +
       dp.section_II.ic_acquisitions.vat +
       dp.section_III.domestic_rc_recipient.vat +
+      dp.section_III.ic_services.vat +
+      dp.section_III.third_country_services.vat +
       dp.section_III.import.vat
   );
   const inputVat = round2(
@@ -577,7 +686,9 @@ export async function computeVatReports(period: Period): Promise<VatReports> {
       dp.section_V.input_rate19.vat +
       dp.section_V.input_rate5.vat +
       dp.section_V.input_rc.vat +
-      dp.section_V.input_ic.vat
+      dp.section_V.input_ic.vat +
+      dp.section_V.input_ic_services.vat +
+      dp.section_V.input_third_country.vat
   );
   dp.section_VI.output_vat_total = outputVat;
   dp.section_VI.input_vat_total = inputVat;

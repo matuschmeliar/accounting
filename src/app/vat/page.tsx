@@ -259,6 +259,18 @@ function DpDphCard({
             count={sections.section_III.domestic_rc_recipient.count}
           />
           <DpRow
+            label="Cezhraničné EÚ služby B2B (§ 15) — samozdanenie"
+            base={sections.section_III.ic_services.base}
+            vat={sections.section_III.ic_services.vat}
+            count={sections.section_III.ic_services.count}
+          />
+          <DpRow
+            label="Služby z 3. krajiny (§ 69 ods. 2) — samozdanenie"
+            base={sections.section_III.third_country_services.base}
+            vat={sections.section_III.third_country_services.vat}
+            count={sections.section_III.third_country_services.count}
+          />
+          <DpRow
             label="Dovoz tovaru"
             base={sections.section_III.import.base}
             vat={sections.section_III.import.vat}
@@ -304,16 +316,28 @@ function DpDphCard({
             count={sections.section_V.input_rate5.count}
           />
           <DpRow
-            label="Odpočet z RC ako príjemca"
+            label="Odpočet z tuzemského RC ako príjemca"
             base={sections.section_V.input_rc.base}
             vat={sections.section_V.input_rc.vat}
             count={sections.section_V.input_rc.count}
           />
           <DpRow
-            label="Odpočet z IC nadobudnutia"
+            label="Odpočet z IC nadobudnutia tovaru"
             base={sections.section_V.input_ic.base}
             vat={sections.section_V.input_ic.vat}
             count={sections.section_V.input_ic.count}
+          />
+          <DpRow
+            label="Odpočet z cezhraničných EÚ služieb"
+            base={sections.section_V.input_ic_services.base}
+            vat={sections.section_V.input_ic_services.vat}
+            count={sections.section_V.input_ic_services.count}
+          />
+          <DpRow
+            label="Odpočet zo služieb z 3. krajiny"
+            base={sections.section_V.input_third_country.base}
+            vat={sections.section_V.input_third_country.vat}
+            count={sections.section_V.input_third_country.count}
           />
         </SectionBlock>
 

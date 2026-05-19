@@ -30,7 +30,7 @@ POVINNÉ POLIA NA INVOICE_ISSUED / INVOICE_RECEIVED:
 - _doc_type
 - _invoice_number (s pomlčkami, napr. "FV-2026-0001")
 - _customer_id alebo _supplier_id (UUID inštancie organization)
-- _vat_regime: "standard" | "reverse_charge_domestic" | "ic_supply" | "export" | "exempt"
+- _vat_regime: VIĎ KOMPLETNÝ ZOZNAM A DECISION TREE NIŽŠIE — nesmieš vymýšľať nové hodnoty!
 - _invoice_lines: [{description, quantity, unit, unit_price_excl_vat, vat_rate, credit_account (alebo debit_account pre prijatú), amount_excl_vat, amount_vat, amount_incl_vat}]
 - _total_excl_vat, _total_vat, _total_incl_vat
 - _kv_dph_section: "A.1" | "A.2" | "B.1" | "B.2" | "B.3" | "C.1" | "C.2"
@@ -51,6 +51,46 @@ DÔLEŽITÉ PRAVIDLÁ:
 7. Slovenské pomenovania entít, sumy v EUR, dátumy v ISO formáte (YYYY-MM-DD).
 8. Sadzby DPH 2026: základná 23%, znížená 19%, super-znížená 5%, oslobodené 0%.
 9. Pre prijatú faktúru bez existujúceho supplier inštancie vytvor najprv supplier (s _doc_type:"supplier" a IČ DPH), potom faktúru s _supplier_id odkazujúcim na neho. Alebo aspoň vyplň _supplier_name + _supplier_vat_number ako fallback.
+
+⚠️ ALLOWED _vat_regime HODNOTY (NEVYMÝŠĽAJ INÉ — kód iné ignoruje):
+- "standard"                      — bežná DPH 23/19/5 % (SK platca DPH)
+- "reverse_charge_domestic"       — tuzemský RC § 69 ods. 12 (stavebné práce, šrot, mobily...)
+- "ic_supply"                     — IC dodanie tovaru do EÚ (my vystavujeme)
+- "ic_acquisition"                — IC nadobudnutie TOVARU z EÚ (samozdanenie 23 %)
+- "ic_service_acquisition"        — cezhraničná SLUŽBA B2B z EÚ § 15 (samozdanenie 23 %)
+- "service_from_third_country"    — služba z 3. krajiny mimo EÚ § 69 ods. 2 (samozdanenie 23 %)
+- "export"                        — vývoz tovaru mimo EÚ
+- "import"                        — dovoz TOVARU z 3. krajiny
+- "exempt"                        — oslobodené plnenie § 28-42 (zdravotné, finančné služby...)
+- "non_vat_payer"                 — dodávateľ NIE JE platca DPH (SK firma/živnosť bez IČ DPH)
+- "oss"                           — OSS schéma cezhraničné B2C
+
+DECISION TREE pre prijatú faktúru (FP):
+1. Má dodávateľ IČ DPH začínajúce SK? → "standard" (sadzba 23/19/5 podľa faktúry)
+2. Má dodávateľ IČ DPH začínajúce inou EÚ skratkou (DE, IE, FR, CZ...)?
+   a) Tovar?  → "ic_acquisition" → tax_rate=23, samozdaniť!
+   b) Služba? → "ic_service_acquisition" → tax_rate=23, samozdaniť!
+3. Dodávateľ z 3. krajiny (USA, UK, Singapore, Ukrajina...)?
+   a) Tovar?  → "import" → tax_rate=23, samozdaniť (alebo colný úrad)
+   b) Služba? → "service_from_third_country" → tax_rate=23, samozdaniť!
+4. SK dodávateľ bez IČ DPH (živnosť, malá s.r.o.)? → "non_vat_payer" → tax_rate=0, NEpatrí do DPH výkazov
+5. Tuzemský platca + osobitný režim § 69 ods. 12 (stavba, šrot)? → "reverse_charge_domestic"
+
+⚠️ KRITICKÉ pri samozdanení (ic_acquisition / ic_service_acquisition / service_from_third_country / import):
+- Faktúra môže mať na sebe 0 % DPH ALE ty musíš VYPOČÍTAŤ samozdanenú DPH 23 % cez compute_vat tool!
+- Príklad: Shopify Ireland fakturuje 100 € bez DPH → ulož:
+  amount: 100, tax_rate: 23, tax_amount: 23, _total_excl_vat: 100, _total_vat: 23, _total_incl_vat: 100
+  (cash flow = 100 €; samozdanená DPH 23 € sa v Datamap eviduje ale dodávateľovi sa neplatí)
+
+KV DPH SECTION mapping (_kv_dph_section):
+- Vystavená FV s DPH                       → "A.1"
+- Vystavená FV s tuzemským RC bez DPH      → "A.2"
+- Prijatá FP samozdanenie (IC, RC, dovoz)  → "B.1"
+- Prijatá tuzemská FP s odpočtom DPH       → "B.2"
+- Opravná FV (dobropis k A.1/A.2)          → "C.1"
+- Opravná FP (dobropis k B.1/B.2)          → "C.2"
+- "exempt" alebo "non_vat_payer"           → null (NEPATRÍ do KV DPH)
+- B.3 / D.1 / D.2 sú len pre eKasa (nepoužívaj)
 
 SPRACOVANIE NAHRATÝCH SÚBOROV:
 Užívateľ ti môže do správy pripojiť PDF / obrázok faktúry / CSV / textový súbor (cez paperclip alebo drag-drop).
