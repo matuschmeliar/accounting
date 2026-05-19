@@ -7,11 +7,16 @@ import {
   ChevronLeft,
   ChevronRight,
   Eraser,
+  FileText,
+  FileSpreadsheet,
+  Image as ImageIcon,
   MessageSquare,
+  Paperclip,
   Sparkles,
+  X,
 } from "lucide-react";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 
 type Props = {
@@ -20,7 +25,24 @@ type Props = {
 };
 
 const STORAGE_KEY = "accounting:chatHistory:v1";
-const MAX_STORED_MESSAGES = 200; // hard cap proti rastúcemu localStorage
+const MAX_STORED_MESSAGES = 200;
+
+// Vercel Hobby body limit je 4.5 MB. Base64 v JSON inflácia +33%, takže
+// hrubý limit 3 MB na súbor je bezpečný. Pri prechode na Vercel Pro dvíhame.
+const MAX_FILE_BYTES = 3 * 1024 * 1024;
+const MAX_FILES = 5;
+
+const ACCEPTED_MIME = [
+  "application/pdf",
+  "image/png",
+  "image/jpeg",
+  "image/jpg",
+  "image/gif",
+  "image/webp",
+  "text/csv",
+  "text/plain",
+];
+const ACCEPT_ATTR = ".pdf,.png,.jpg,.jpeg,.gif,.webp,.csv,.txt";
 
 function loadStoredMessages(): UIMessage[] {
   if (typeof window === "undefined") return [];
@@ -44,17 +66,37 @@ function saveMessages(messages: UIMessage[]) {
         : messages;
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(trimmed));
   } catch {
-    // quota exceeded / private mode — fail silently
+    // ignore
   }
+}
+
+function formatBytes(n: number): string {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(0)} KB`;
+  return `${(n / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function filesToFileList(files: File[]): FileList {
+  const dt = new DataTransfer();
+  for (const f of files) dt.items.add(f);
+  return dt.files;
+}
+
+function fileIconFor(mime: string) {
+  if (mime.startsWith("image/")) return ImageIcon;
+  if (mime === "application/pdf") return FileText;
+  if (mime === "text/csv" || mime.includes("spreadsheet")) return FileSpreadsheet;
+  return FileText;
 }
 
 export function ChatPanel({ open, onToggle }: Props) {
   const pathname = usePathname();
   const [input, setInput] = useState("");
+  const [attachments, setAttachments] = useState<File[]>([]);
+  const [dragging, setDragging] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Load history once on mount (this useState initializer runs once per Chat instance).
-  // Note: typeof window check guards SSR. ChatPanel is "use client" but RSC still
-  // renders client components on server to generate initial HTML.
   const [initialMessages] = useState<UIMessage[]>(() => loadStoredMessages());
 
   const { messages, sendMessage, status, setMessages } = useChat({
@@ -65,7 +107,6 @@ export function ChatPanel({ open, onToggle }: Props) {
     messages: initialMessages,
   });
 
-  // Sync to localStorage on every message change (after streaming completes).
   useEffect(() => {
     saveMessages(messages);
   }, [messages]);
@@ -73,6 +114,7 @@ export function ChatPanel({ open, onToggle }: Props) {
   function clearHistory() {
     if (!window.confirm("Vymazať celú históriu chatu? Túto akciu nie je možné vrátiť.")) return;
     setMessages([]);
+    setAttachments([]);
     try {
       window.localStorage.removeItem(STORAGE_KEY);
     } catch {
@@ -80,8 +122,125 @@ export function ChatPanel({ open, onToggle }: Props) {
     }
   }
 
+  function acceptFiles(incoming: File[]) {
+    setUploadError(null);
+
+    // Excel — výslovne odmietame (Anthropic nemá native parser, MVP rieši cez CSV)
+    const xlsxRejected = incoming.filter(
+      (f) =>
+        f.name.toLowerCase().endsWith(".xlsx") ||
+        f.name.toLowerCase().endsWith(".xls") ||
+        f.type.includes("spreadsheetml")
+    );
+    if (xlsxRejected.length > 0) {
+      setUploadError(
+        `Excel zatiaľ nepodporujem. Otvor v Numbers/Excel-i, "Uložiť ako" → CSV, a pošli CSV namiesto: ${xlsxRejected
+          .map((f) => f.name)
+          .join(", ")}`
+      );
+      return;
+    }
+
+    // Veľkosť
+    const tooLarge = incoming.filter((f) => f.size > MAX_FILE_BYTES);
+    if (tooLarge.length > 0) {
+      setUploadError(
+        `Príliš veľké (limit ${formatBytes(MAX_FILE_BYTES)} per súbor — Vercel Hobby): ${tooLarge
+          .map((f) => `${f.name} (${formatBytes(f.size)})`)
+          .join(", ")}`
+      );
+      return;
+    }
+
+    // Typ — niektoré prehliadače dajú prázdny mime, treba fallback na extension
+    const isAccepted = (f: File): boolean => {
+      if (ACCEPTED_MIME.includes(f.type)) return true;
+      const name = f.name.toLowerCase();
+      if (name.endsWith(".pdf")) return true;
+      if (name.endsWith(".csv")) return true;
+      if (name.endsWith(".txt")) return true;
+      if (/\.(png|jpe?g|gif|webp)$/.test(name)) return true;
+      return false;
+    };
+    const unsupported = incoming.filter((f) => !isAccepted(f));
+    if (unsupported.length > 0) {
+      setUploadError(
+        `Nepodporovaný typ: ${unsupported
+          .map((f) => `${f.name} (${f.type || "?"})`)
+          .join(
+            ", "
+          )}. Akceptujem PDF, obrázky (PNG/JPG/GIF/WebP), CSV a TXT.`
+      );
+      return;
+    }
+
+    // Počet
+    if (attachments.length + incoming.length > MAX_FILES) {
+      setUploadError(`Max ${MAX_FILES} súborov naraz.`);
+      return;
+    }
+
+    setAttachments((prev) => [...prev, ...incoming]);
+  }
+
+  function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    if (e.target.files) {
+      acceptFiles(Array.from(e.target.files));
+    }
+    // Reset value aby user mohol vybrať ten istý súbor znova po removnutí
+    e.target.value = "";
+  }
+
+  function removeAttachment(idx: number) {
+    setAttachments((prev) => prev.filter((_, i) => i !== idx));
+    setUploadError(null);
+  }
+
+  function onSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (isLoading) return;
+    if (!input.trim() && attachments.length === 0) return;
+
+    const text =
+      input.trim() ||
+      (attachments.length === 1
+        ? "Spracuj prosím tento dokument."
+        : "Spracuj prosím tieto dokumenty.");
+
+    if (attachments.length > 0) {
+      sendMessage({ text, files: filesToFileList(attachments) });
+    } else {
+      sendMessage({ text });
+    }
+
+    setInput("");
+    setAttachments([]);
+    setUploadError(null);
+  }
+
+  function onDragOver(e: React.DragEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragging(true);
+  }
+  function onDragLeave(e: React.DragEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragging(false);
+  }
+  function onDrop(e: React.DragEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragging(false);
+    if (e.dataTransfer.files) {
+      acceptFiles(Array.from(e.dataTransfer.files));
+    }
+  }
+
   const isLoading = status === "submitted" || status === "streaming";
   const hasMessages = messages.length > 0;
+  const canSubmit =
+    !isLoading && (input.trim().length > 0 || attachments.length > 0);
 
   if (!open) {
     return (
@@ -103,7 +262,23 @@ export function ChatPanel({ open, onToggle }: Props) {
   }
 
   return (
-    <aside className="hidden md:flex w-[400px] shrink-0 flex-col border-l border-border bg-card">
+    <aside
+      className="hidden md:flex w-[400px] shrink-0 flex-col border-l border-border bg-card relative"
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
+    >
+      {dragging && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-accent/20 border-2 border-dashed border-accent pointer-events-none">
+          <div className="rounded-lg bg-card border border-border px-4 py-3 shadow-sm">
+            <div className="font-serif text-[16px]">Pusti tu — pripojí sa do správy</div>
+            <div className="text-[11px] text-muted-foreground mt-0.5">
+              PDF, obrázok, CSV. Max {formatBytes(MAX_FILE_BYTES)} per súbor.
+            </div>
+          </div>
+        </div>
+      )}
+
       <header className="flex items-start justify-between px-5 pt-5 pb-3 gap-2">
         <div className="flex-1 min-w-0">
           <h2 className="font-serif text-[20px] font-medium leading-tight">
@@ -114,7 +289,7 @@ export function ChatPanel({ open, onToggle }: Props) {
               ? `${messages.length} ${
                   messages.length === 1 ? "správa" : "správ"
                 } · história uložená v prehliadači`
-              : "Pýtaj sa, hľadaj v dátach, vytváraj záznamy hlasom."}
+              : "Pýtaj sa, hľadaj v dátach, alebo pripoj faktúru (PDF/CSV)."}
           </p>
         </div>
         <div className="flex items-center gap-1 shrink-0">
@@ -162,6 +337,10 @@ export function ChatPanel({ open, onToggle }: Props) {
                 sendMessage({ text: "Spočítaj DPH za aktuálny mesiac" })
               }
             />
+            <SuggestionBtn
+              text="📎 Pripoj PDF faktúru a ja ju zaeviduuj"
+              onClick={() => fileInputRef.current?.click()}
+            />
           </div>
         )}
 
@@ -177,26 +356,75 @@ export function ChatPanel({ open, onToggle }: Props) {
         )}
       </div>
 
-      <form
-        className="px-5 pb-5 pt-2"
-        onSubmit={(e) => {
-          e.preventDefault();
-          if (!input.trim() || isLoading) return;
-          sendMessage({ text: input });
-          setInput("");
-        }}
-      >
+      <form className="px-5 pb-5 pt-2" onSubmit={onSubmit}>
+        {/* Attachments pills */}
+        {attachments.length > 0 && (
+          <div className="mb-2 flex flex-wrap gap-1.5">
+            {attachments.map((file, i) => {
+              const Icon = fileIconFor(file.type);
+              return (
+                <div
+                  key={`${file.name}-${i}`}
+                  className="flex items-center gap-1.5 rounded-md border border-border bg-muted/40 pl-2 pr-1 py-1 text-[11px] max-w-full"
+                >
+                  <Icon className="h-3 w-3 text-muted-foreground shrink-0" />
+                  <span className="font-medium truncate max-w-[180px]" title={file.name}>
+                    {file.name}
+                  </span>
+                  <span className="text-muted-foreground shrink-0">
+                    {formatBytes(file.size)}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => removeAttachment(i)}
+                    aria-label={`Odstrániť ${file.name}`}
+                    className="ml-0.5 rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Error message */}
+        {uploadError && (
+          <div className="mb-2 rounded-md border border-amber-200 bg-amber-50/60 px-2.5 py-1.5 text-[11px] text-amber-800">
+            {uploadError}
+          </div>
+        )}
+
         <div className="relative">
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            accept={ACCEPT_ATTR}
+            onChange={handleFileSelect}
+            className="hidden"
+            aria-hidden="true"
+          />
           <input
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="Spýtaj sa AI účtovníka…"
-            className="w-full rounded-xl border border-border bg-card pl-4 pr-12 py-3 text-[13px] outline-none focus:border-foreground/30 placeholder:text-muted-foreground/60 transition-colors"
+            placeholder="Spýtaj sa AI účtovníka… alebo pripoj faktúru"
+            className="w-full rounded-xl border border-border bg-card pl-10 pr-12 py-3 text-[13px] outline-none focus:border-foreground/30 placeholder:text-muted-foreground/60 transition-colors"
             disabled={isLoading}
           />
           <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={isLoading || attachments.length >= MAX_FILES}
+            aria-label="Pripojiť súbor"
+            title={`Pripoj PDF / obrázok / CSV (max ${formatBytes(MAX_FILE_BYTES)} per súbor, ${MAX_FILES} spolu)`}
+            className="absolute left-1.5 top-1/2 -translate-y-1/2 rounded-lg p-2 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-30 transition-colors"
+          >
+            <Paperclip className="h-3.5 w-3.5" />
+          </button>
+          <button
             type="submit"
-            disabled={isLoading || !input.trim()}
+            disabled={!canSubmit}
             aria-label="Pošli"
             className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-lg bg-foreground p-2 text-background disabled:opacity-30 hover:bg-foreground/90 transition-colors"
           >
@@ -207,10 +435,10 @@ export function ChatPanel({ open, onToggle }: Props) {
           {pathname && pathname !== "/" ? (
             <>
               Kontext: <code className="font-mono">{pathname}</code> · ⌘K
-              skryje
+              skryje · drag-drop OK
             </>
           ) : (
-            <>⌘K skryje chat panel</>
+            <>⌘K skryje chat panel · drag-drop súborov OK</>
           )}
         </div>
       </form>
@@ -245,16 +473,41 @@ function ChatMessage({ message }: { message: UIMsg }) {
     return (
       <div className="flex justify-end">
         <div className="max-w-[85%] rounded-2xl rounded-tr-md bg-foreground text-background px-3.5 py-2 text-[13px]">
-          {message.parts.map((part, i) => {
-            if (part.type === "text") {
-              return (
-                <div key={i} className="whitespace-pre-wrap leading-relaxed">
-                  {part.text}
-                </div>
-              );
-            }
-            return null;
-          })}
+          <div className="space-y-1.5">
+            {message.parts.map((part, i) => {
+              if (part.type === "text") {
+                return (
+                  <div key={i} className="whitespace-pre-wrap leading-relaxed">
+                    {part.text}
+                  </div>
+                );
+              }
+              if (part.type === "file") {
+                const p = part as {
+                  type: "file";
+                  mediaType: string;
+                  filename?: string;
+                  url: string;
+                };
+                const Icon = fileIconFor(p.mediaType);
+                return (
+                  <div
+                    key={i}
+                    className="flex items-center gap-1.5 rounded-md bg-background/10 px-2 py-1 text-[11px]"
+                  >
+                    <Icon className="h-3 w-3 shrink-0" />
+                    <span className="font-medium truncate">
+                      {p.filename ?? "súbor"}
+                    </span>
+                    <span className="text-background/60 shrink-0">
+                      {p.mediaType.split("/")[1]?.toUpperCase() ?? "?"}
+                    </span>
+                  </div>
+                );
+              }
+              return null;
+            })}
+          </div>
         </div>
       </div>
     );
